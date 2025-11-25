@@ -1,0 +1,10 @@
+streamlit
+pandas
+python-dateutil
+numpy
+sentence-transformers
+transformers
+torch
+pytest
+cryptography
+keyring
