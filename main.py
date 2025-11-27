@@ -12,7 +12,7 @@ def main():
     initialize()
     atexit.register(save)
     print("Database initialized in memory.")
-    print("Run the Streamlit UI with:  streamlit run app.py")
+    print("Run the Streamlit UI with: streamlit run app.py")
 
 if __name__ == "__main__":
     main()

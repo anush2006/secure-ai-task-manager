@@ -4,12 +4,14 @@ from database import add, get_all, get_by_id, update, delete
 from encrypted_storage import save_encrypted_db
 from ai_utils import summarize_text, build_tfidf_index, semantic_search, generate_subtasks, parse_text_spacy
 from main import initialize
-import sample_tasks
+import tests.sample_tasks as sample_tasks
 from database import add
 
 st.set_page_config(page_title="Secure AI Task Manager", layout="wide")
+if "db_loaded" not in st.session_state:
+    initialize()
+    st.session_state.db_loaded = True
 
-initialize()
 
 if "tfidf_index" not in st.session_state:
     st.session_state["tfidf_index"] = None
@@ -21,7 +23,7 @@ def rebuild_index():
 st.markdown(
     """
     <h1 style="text-align:center; font-size: 3rem;">
-        🔐 Secure AI Task Manager
+         Secure AI Task Manager
     </h1>
     <p style="text-align:center; font-size:1.2rem; color:gray;">
         Privacy-first, encrypted, local task intelligence
@@ -126,8 +128,17 @@ with tabs[3]:
 
         if st.button("🧩 Generate Subtasks"):
             subs = generate_subtasks(task)
-            for s in subs:
-                st.markdown(f"**{s['title']}** — {s['description']}")
+            if subs is None:
+                st.error("Failed to generate subtasks.")
+            elif not subs:
+                st.info("No subtasks generated.")
+            else:
+                st.markdown(f"{subs}")
+            try:
+                for s in subs:
+                    st.markdown(f"**{s['title']}** — {s['description']}")
+            except:
+                st.error("Error displaying subtasks.")
 
         if st.button("🔬 Show Parsed Features"):
             parsed = parse_text_spacy(task["description"] or "")
@@ -138,8 +149,3 @@ with tabs[3]:
 if st.button("🔐 Save Encrypted Database Now"):
     save_encrypted_db()
     st.success("Encrypted DB saved.")
-if st.button("📥 Load Sample Test Data"):
-    for title, desc, due, cat, pri, status in sample_tasks.sample_tasks:
-        add(title, desc, status=status, priority=pri, category=cat, due_date=due)
-    rebuild_index()
-    st.success("Sample test data loaded successfully.")

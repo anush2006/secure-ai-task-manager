@@ -6,43 +6,8 @@ from sklearn.metrics.pairwise import cosine_similarity
 import json
 import requests #type:ignore
 
-OLLAMA_LOCAL_URL = "http://localhost:11434/api/generate"
-REFERENCE_IMAGE_PATH = "/mnt/data/6a04399d-cc4d-46c7-9ba9-918c913cae5d.png"
-
-def _extract_json_from_text(text):
-    import re, json
-
-    # First attempt: direct decode
-    try:
-        return json.loads(text)
-    except:
-        pass
-
-    # Extract the largest JSON array in the text
-    matches = re.findall(r"\[.*?\]", text, re.DOTALL)
-    matches_sorted = sorted(matches, key=len, reverse=True)
-
-    for m in matches_sorted:
-        try:
-            return json.loads(m)
-        except:
-            fixed = m.replace(",]", "]").replace(",\n]", "]").replace(", }", "}")
-            try:
-                return json.loads(fixed)
-            except:
-                continue
-
-    matches2 = re.findall(r"\{.*?\}", text, re.DOTALL)
-    matches_sorted2 = sorted(matches2, key=len, reverse=True)
-
-    for m in matches_sorted2:
-        try:
-            return json.loads(m)
-        except:
-            continue
-
-    return None
-
+OLLAMA_URL = "http://localhost:11434/api/generate"
+MODEL = "llama3"
 
 try:
     nlp = spacy.load("en_core_web_sm")
@@ -202,87 +167,49 @@ def parse_text_spacy(text):
         "entities": entities
     }
 
-def generate_subtasks(task, count=6, model="llama3", temperature=0.2, max_tokens=512, timeout=30):
-    title = task.get("title", "")
-    description = task.get("description", "")
-
-    parsed = parse_text_spacy((title or "") + ". " + (description or ""))
-    verbs = parsed.get("verbs", [])
-    noun_chunks = parsed.get("noun_chunks", [])
-    direct_objects = parsed.get("direct_objects", [])
-    entities = parsed.get("entities", [])
-
+def generate_subtasks(task):
+    text = (task.get("title") or "") + " " + (task.get("description") or "")
+    
     prompt = f"""
-You are an AI that outputs ONLY strict JSON. 
-You must ALWAYS respond with valid JSON, with no comments, no markdown, no explanation.
+You MUST return a JSON array. No prose. No commentary.
+Output format EXACTLY:
 
-You will receive a task. 
-Generate exactly {count} subtasks.
-
-Your response MUST be a JSON array like this:
 [
-  {{
-    "title": "...",
-    "description": "...",
-    "estimate_hours": 0,
-    "rationale": "..."
-  }}
+  {{"title":"...", "description":"...", "estimate_hours":number}},
+  {{"title":"...", "description":"...", "estimate_hours":number}}
 ]
 
-Now here is the task:
-
-Title: {title}
-Description: {description}
-
-Additional context:
-verbs = {verbs}
-noun_chunks = {noun_chunks}
-direct_objects = {direct_objects}
-entities = {entities}
-
-Return ONLY the JSON array. Nothing else.
+Generate 6 subtasks for the task.
+TASK: "{text}"
 """
+    response = requests.post(OLLAMA_URL, json={"model": MODEL, "prompt": prompt}, stream=True)
 
-    payload = {
-        "model": model,
-        "prompt": prompt,
-        "max_tokens": max_tokens,
-        "temperature": temperature
-    }
-
-    try:
-        resp = requests.post(OLLAMA_LOCAL_URL, json=payload, timeout=timeout)
-    except requests.exceptions.RequestException as e:
-        return [{"title": "Error", "description": str(e), "estimate_hours": 1.0, "rationale": "Ollama server unreachable."}]
-
-    try:
-        js = resp.json()
-        body = js.get("output") if isinstance(js.get("output"), str) else json.dumps(js)
-    except Exception:
-        body = resp.text
-
-    parsed_json = _extract_json_from_text(body)
-    if parsed_json is None:
-        return [{"title": "Error", "description": "Could not parse LLM JSON.", "estimate_hours": 1.0, "rationale": body[:200]}]
-
-    subtasks = []
-    for item in parsed_json[:count]:
-        if not isinstance(item, dict):
+    merged = ""
+    for line in response.iter_lines():
+        if not line:
             continue
-        title_s = item.get("title", "").strip()
-        desc_s = item.get("description", "").strip()
-        est = item.get("estimate_hours", 1.0)
+
         try:
-            est_f = float(est)
-        except Exception:
-            est_f = 1.0
-        rationale = item.get("rationale", "").strip()
+            js = json.loads(line.decode())
+            if "response" in js:
+                merged += js["response"]
+        except:
+            continue
 
-        subtasks.append({
-            "title": title_s,
-            "description": desc_s,
-            "estimate_hours": round(est_f, 1),
-            "rationale": rationale
-        })
+    print("\n========= RAW MERGED RESPONSE =========")
+    print(merged[:600])
+    print("=======================================\n")
+    try:
+        return json.loads(merged)
+    except:
+        pass
+    match = re.search(r"\[.*\]", merged, re.DOTALL)
+    if match:
+        block = match.group(0)
+        try:
+            return json.loads(block)
+        except:
+            block = block.replace(",]", "]").replace(", }", "}")
+            return json.loads(block)
 
-    return subtasks
+    return [{"error": "Still not valid JSON", "raw": merged[:500]}]

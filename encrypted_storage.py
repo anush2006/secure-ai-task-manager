@@ -46,7 +46,7 @@ def save_encrypted_db():
 
 def load_or_init_database():
     sql_script = load_encrypted_db()
-    conn = sqlite3.connect(":memory:")
+    conn = sqlite3.connect(":memory:",check_same_thread=False)
     set_connection(conn)
 
     if sql_script:

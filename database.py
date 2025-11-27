@@ -52,7 +52,7 @@ def add(title, description="", status="todo", priority=10, category=None, due_da
     conn = get_connection()
     curs = conn.cursor()
 
-    now = datetime.utcnow().isoformat()
+    now = datetime.now().isoformat()
 
     curs.execute("""
         INSERT INTO tasks (title, description, due_date, category, priority, status, created_at, updated_at)
@@ -90,7 +90,7 @@ def update(task_id, **fields):
     conn = get_connection()
     curs = conn.cursor()
 
-    fields["updated_at"] = datetime.utcnow().isoformat()
+    fields["updated_at"] = datetime.now().isoformat()
 
     columns = ", ".join(f"{k} = ?" for k in fields)
     values = list(fields.values()) + [task_id]
